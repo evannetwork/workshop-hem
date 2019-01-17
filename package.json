@@ -1,0 +1,31 @@
+{
+  "dependencies": {
+    "gulp": "3.9.1",
+    "typescript": "^2.9.2",
+    "web3": "1.0.0-beta.37",
+    "@evan.network/edge-server-seed": "^1.0.0"
+  },
+  "description": "Dev workshop for heavy equipment management",
+  "devDependencies": {
+    "@evan.network/api-blockchain-core": "^1.7.0",
+    "@evan.network/smart-contracts-core": "^1.5.2",
+    "readline": "1.3.0"
+  },
+  "keywords": [
+    "javascript",
+    "typescript",
+    "API",
+    "Angular 5",
+    "Ionic",
+    "DApp",
+    "SASS"
+  ],
+  "license": "Apache-2.0",
+  "name": "workshop-hem",
+  "scripts": {
+    "deploy": "gulp --gulpfile node_modules/@evan.network/ui-dapp-browser/gulp/deployment.js deploy --config /home/swo/swo/evan.network/workshop/repo/workshop-hem/scripts/config/deployment.js",
+    "start": "cd node_modules/@evan.network/edge-server-seed && npm start",
+    "debug": "cd node_modules/@evan.network/edge-server-seed && npm run debug"
+  },
+  "version": "1.0.0"
+}
