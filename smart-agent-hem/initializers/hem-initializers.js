@@ -94,7 +94,11 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
        */
       async _listenToTransactions() {
         api.log('subscribing to digital twin updates', 'debug')
+        // add DataContract abi to decoder
         abiDecoder.addABI(JSON.parse(this.runtime.contractLoader.contracts.DataContract.interface))
+        // load identity for trusted device (for claims checks)
+        const issuerIdentity = (await this.runtime.claims.getIdentityForAccount(
+          config.trustedIssuer)).options.address
         api.eth.blockEmitter.on('data', async (block) => {
           for (let tx of block.transactions) {
             const input = abiDecoder.decodeMethod(tx.input)
@@ -115,33 +119,56 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
                 )
                 // check if last two entries are a pair of 'stopped' and 'started' entries 
                 if (entries.length > 1 &&
-                  entries[0].state === 'stopped' &&
-                  entries[1].state === 'started') {
-                  api.log('received usage log, updating workinghours')
+                    entries[0].state === 'stopped' &&
+                    entries[1].state === 'started') {
+                  api.log(`checking claims for account "${tx.from}"`, 'debug')
 
-                  // get current value for workinghours
-                  const workinghours = await this.runtime.dataContract.getEntry(
-                    tx.to,
-                    'workinghours',
-                    config.ethAccount,
-                    true,
-                    false,
+                  // get all '/calibrated' claims for tx originator
+                  const claims = await this.runtime.claims.getClaims(
+                    tx.from,
+                    '/calibrated',
                   )
 
-                  // calculate last run time
-                  const diff = parseInt(entries[0].time, 10) -
-                    parseInt(entries[1].time, 10)
+                  // check if at least one claim
+                  // - is valid,
+                  // - is new enough and
+                  // - has been issued by trusted issuer
+                  const valid = !!claims.filter(c =>
+                    c.valid &&
+                    c.issuer === issuerIdentity &&
+                    parseInt(c.expirationDate, 10) * 1000 >= Date.now()
+                  ).length
 
-                  // update workinghours
-                  await this.runtime.dataContract.setEntry(
-                    tx.to,
-                    'workinghours',
-                    workinghours + diff,
-                    config.ethAccount,
-                    true,
-                    false,
-                    'unencrypted',
-                  )
+                  if (!valid) {
+                    api.log(`received usage log from ${tx.from}, ` +
+                      'but account doesn\'t have valid certificates', 'error')
+                  } else {
+                    api.log('received usage log from trusted device, updating workinghours')
+
+                    // get current value for workinghours
+                    const workinghours = await this.runtime.dataContract.getEntry(
+                      tx.to,
+                      'workinghours',
+                      config.ethAccount,
+                      true,
+                      false,
+                    )
+
+                    // calculate last run time
+                    const diff = parseInt(entries[0].time, 10) -
+                      parseInt(entries[1].time, 10)
+
+                    // update workinghours
+                    await this.runtime.dataContract.setEntry(
+                      tx.to,
+                      'workinghours',
+                      workinghours + diff,
+                      config.ethAccount,
+                      true,
+                      false,
+                      'unencrypted',
+                    )
+                  }
                 }
               }
             }

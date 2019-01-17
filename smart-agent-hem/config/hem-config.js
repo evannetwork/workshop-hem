@@ -20,6 +20,7 @@ exports['default'] = {
       ethAccount: '0xf638C091a1a45AEDfAFC921f27E8d65AeA8C18c4',
       ensAddress: 'EX8000-6.workshop-hem.fifs.registrar.test.evan',
       toInvite: '0x069Eb0c1ad5f814f4c02bF02C85aBb1ad4a768B9',
+      trustedIssuer: '0x0630EE563cdf67a2DdE9161405B722f5AEfee18A',
     }
   }
 }
