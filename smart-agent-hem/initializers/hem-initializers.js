@@ -35,34 +35,62 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
       /**
        * creates a digital twin, registers its address in ENS
        *
+       * @param      {string}           name    name of the new twin
        * @return     {Promise<string>}  accountId of new twin
        */
-      async createTwin() {
+      async createTwin(name) {
         api.log('creating new digital twin', 'debug')
         const contract = await this.runtime.dataContract.create(
           'testdatacontract',
           config.ethAccount,
           null,
           {
-            "public": {
-              "name": "EX8000-6",
-              "description": "Digital Twin for EX8000-6",
-              "version": "0.1.0",
-              "author": "evan GmbH",
+            public: {
+              name,
+              description: `Digital Twin for ${name}`,
+              version: '0.1.0',
+              author: 'evan GmbH',
             }
           },
         )
 
-        api.log(`registering twin ${contract.options.address} at ENS address ${config.ensAddress}`, 'debug')
+        const ensAddress = `${this._sanitizeName(name)}.${config.ensParentDomain}`
+        api.log(`registering twin ${contract.options.address} at ENS address ${ensAddress}`, 'debug')
         await this.runtime.nameResolver.setAddress(
-          config.ensAddress,
+          ensAddress,
           contract.options.address,
           config.ethAccount,
         )
 
-        await this.updateTwin()
+        api.log('adding digital twin to profile', 'debug')
+        await this.runtime.profile.loadForAccount(
+          this.runtime.profile.treeLabels.contracts)
+        await this.runtime.profile.addBcContract(
+          'heavy-machines', contract.options.address, { ensAddress })
+        await this.runtime.profile.storeForAccount(
+          this.runtime.profile.treeLabels.contracts)
+
+        await this.updateTwin(name)
 
         return contract.options.address
+      }
+
+      /**
+       * retrieves digital twin contracts, managed by this server
+       *
+       * @param      {bool}          resolve  look up details for digital twins or return plain
+       *                                      values
+       * @return     {Promise<any>}  object with plain twin data or list with detailed information
+       */
+      async getManagedTwins(resolve) {
+        api.log('retrieving digital twin from profile', 'debug')
+        const bcContracts = await this.runtime.profile.getBcContracts('heavy-machines')
+        if (!resolve) {
+          return bcContracts
+        } else {
+          return Promise.all(Object.keys(bcContracts).map(address =>
+            this.runtime.profile.getBcContract('heavy-machines', address)))
+        }
       }
 
       /**
@@ -78,13 +106,20 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
       /**
        * update contract structure of digital twin
        *
+       * @param      {string}         name    name of a twin
        * @return     {Promise<void>}  resolved when done
        */
-      async updateTwin() {
-        api.log(`starting updates for twin "${config.ensAddress}"`, 'debug')
-        await this._updateTwin1()
-        await this._updateTwin2()
-        await this._updateTwin3()
+      async updateTwin(name) {
+        api.log(`starting updates for twin '${name}'`, 'debug')
+        const ensAddress = `${this._sanitizeName(name)}.${config.ensParentDomain}`
+        const twinAddress = await this.runtime.nameResolver.getAddress(ensAddress)
+        await this._updateTwin1(twinAddress)
+        await this._updateTwin2(twinAddress)
+        await this._updateTwin3(twinAddress)
+
+        // update list of twins to handle updates for
+        let managedTwinEntries = await this.getManagedTwins()
+        this.managedTwins = Object.keys(managedTwinEntries)
       }
 
       /**
@@ -94,6 +129,9 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
        */
       async _listenToTransactions() {
         api.log('subscribing to digital twin updates', 'debug')
+        // get twins from profile and keep only IDs
+        let managedTwinEntries = await this.getManagedTwins()
+        this.managedTwins = Object.keys(managedTwinEntries || {})
         // add DataContract abi to decoder
         abiDecoder.addABI(JSON.parse(this.runtime.contractLoader.contracts.DataContract.interface))
         // load identity for trusted device (for claims checks)
@@ -101,73 +139,76 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
           config.trustedIssuer)).options.address
         api.eth.blockEmitter.on('data', async (block) => {
           for (let tx of block.transactions) {
-            const input = abiDecoder.decodeMethod(tx.input)
-            if (input) {
-              // check if target list is 'usagelog'
-              if (input.params[0].value[0] ===
-                  this.runtime.nameResolver.soliditySha3('usagelog')) {
-                // retrieve all entries, starting with newest entry
-                const entries = await this.runtime.dataContract.getListEntries(
-                  tx.to,
-                  'usagelog',
-                  config.ethAccount,
-                  true,
-                  true,
-                  10,
-                  0,
-                  true,
-                )
-                // check if last two entries are a pair of 'stopped' and 'started' entries 
-                if (entries.length > 1 &&
-                    entries[0].state === 'stopped' &&
-                    entries[1].state === 'started') {
-                  api.log(`checking claims for account "${tx.from}"`, 'debug')
-
-                  // get all '/calibrated' claims for tx originator
-                  const claims = await this.runtime.claims.getClaims(
-                    tx.from,
-                    '/calibrated',
+            // check if target of transaction in list of contracts from profile
+            if (this.managedTwins.includes(tx.to)) {
+              const input = abiDecoder.decodeMethod(tx.input)
+              if (input) {
+                // check if target list is 'usagelog'
+                if (input.params[0].value[0] ===
+                    this.runtime.nameResolver.soliditySha3('usagelog')) {
+                  // retrieve all entries, starting with newest entry
+                  const entries = await this.runtime.dataContract.getListEntries(
+                    tx.to,
+                    'usagelog',
+                    config.ethAccount,
+                    true,
+                    true,
+                    10,
+                    0,
+                    true,
                   )
+                  // check if last two entries are a pair of 'stopped' and 'started' entries 
+                  if (entries.length > 1 &&
+                      entries[0].state === 'stopped' &&
+                      entries[1].state === 'started') {
+                    api.log(`checking claims for account '${tx.from}'`, 'debug')
 
-                  // check if at least one claim
-                  // - is valid,
-                  // - is new enough and
-                  // - has been issued by trusted issuer
-                  const valid = !!claims.filter(c =>
-                    c.valid &&
-                    c.issuer === issuerIdentity &&
-                    parseInt(c.expirationDate, 10) * 1000 >= Date.now()
-                  ).length
-
-                  if (!valid) {
-                    api.log(`received usage log from ${tx.from}, ` +
-                      'but account doesn\'t have valid certificates', 'error')
-                  } else {
-                    api.log('received usage log from trusted device, updating workinghours')
-
-                    // get current value for workinghours
-                    const workinghours = await this.runtime.dataContract.getEntry(
-                      tx.to,
-                      'workinghours',
-                      config.ethAccount,
-                      true,
-                      false,
+                    // get all '/calibrated' claims for tx originator
+                    const claims = await this.runtime.claims.getClaims(
+                      tx.from,
+                      '/calibrated',
                     )
 
-                    // calculate last run time
-                    const diff = parseInt(entries[0].time, 10) -
-                      parseInt(entries[1].time, 10)
+                    // check if at least one claim
+                    // - is valid,
+                    // - is new enough and
+                    // - has been issued by trusted issuer
+                    const valid = !!claims.filter(c =>
+                      c.valid &&
+                      c.issuer === issuerIdentity &&
+                      parseInt(c.expirationDate, 10) * 1000 >= Date.now()
+                    ).length
 
-                    // update workinghours
-                    await this.runtime.dataContract.setEntry(
-                      tx.to,
-                      'workinghours',
-                      workinghours + diff,
-                      config.ethAccount,
-                      true,
-                      false,
-                      'unencrypted',
-                    )
+                    if (!valid) {
+                      api.log(`received usage log from ${tx.from}, ` +
+                        'but account doesn\'t have valid certificates', 'error')
+                    } else {
+                      api.log('received usage log from trusted device, updating workinghours')
+
+                      // get current value for workinghours
+                      const workinghours = await this.runtime.dataContract.getEntry(
+                        tx.to,
+                        'workinghours',
+                        config.ethAccount,
+                        true,
+                        false,
+                      )
+
+                      // calculate last run time
+                      const diff = parseInt(entries[0].time, 10) -
+                        parseInt(entries[1].time, 10)
+
+                      // update workinghours
+                      await this.runtime.dataContract.setEntry(
+                        tx.to,
+                        'workinghours',
+                        workinghours + diff,
+                        config.ethAccount,
+                        true,
+                        false,
+                        'unencrypted',
+                      )
+                    }
                   }
                 }
               }
@@ -177,16 +218,26 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
       }
 
       /**
+       * sanitizes name for using in in ENS address
+       *
+       * @param      {string}  name    name to sanitize
+       * @return     {string}  sanitized name
+       */
+      _sanitizeName(name) {
+        return name.toLowerCase().replace(/[ .]/g, '')
+      }
+
+      /**
        * apply first update:
        * - add field 'metadata' to description
        * - allow field 'metadata' to be set by contract owner group
        * - set value for metadata
        * - update version in description
        *
+       * @param      {string}         twinAddress  address of a twin
        * @return     {Promise<void>}  resolved when done
        */
-      async _updateTwin1() {
-        const twinAddress = await this.runtime.nameResolver.getAddress(config.ensAddress)
+      async _updateTwin1(twinAddress) {
         const description = await this.runtime.description.getDescription(twinAddress)
 
         // check version of twin before applying updates
@@ -260,10 +311,10 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
        * - share encryption key for contract with configured iot device
        * - update version in description
        *
+       * @param      {string}         twinAddress  address of a twin
        * @return     {Promise<void>}  resolved when done
        */
-      async _updateTwin2() {
-        const twinAddress = await this.runtime.nameResolver.getAddress(config.ensAddress)
+      async _updateTwin2(twinAddress) {
         const description = await this.runtime.description.getDescription(twinAddress)
 
         const versionInfo = description.public.version.split('.')
@@ -340,10 +391,10 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
        * - set initial value for workinghours --> 0
        * - update version in description
        *
+       * @param      {string}         twinAddress  address of a twin
        * @return     {Promise<void>}  resolved when done
        */
-      async _updateTwin3() {
-        const twinAddress = await this.runtime.nameResolver.getAddress(config.ensAddress)
+      async _updateTwin3(twinAddress) {
         const description = await this.runtime.description.getDescription(twinAddress)
 
         const versionInfo = description.public.version.split('.')
