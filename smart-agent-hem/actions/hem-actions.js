@@ -14,7 +14,7 @@ class SmartAgentHemCreate extends Action {
 
   async run({ params, response }) {
     try {
-      response.contractId = await api.smartAgentHem.createTwin(params.name)
+      response.contractId = await api.smartAgentHem.createTwin()
       response.status = 'success'
 
     } catch (ex) {
