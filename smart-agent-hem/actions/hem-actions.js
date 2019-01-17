@@ -1,41 +1,20 @@
 'use strict'
+
 const { Action, api } = require('actionhero')
 
-const rxEtherAccount = /^0x[\da-fA-F]{40}/
 
-class SmartAgentHem extends Action {
+class SmartAgentHemCreate extends Action {
   constructor() {
     super()
-    this.name = 'smart-agents/hem/hem'
-    this.description = 'Hem action.'
-    this.inputs = {
-      srcId: {
-        required: true,
-        validator: this.accountValidator,
-      },
-    }
+    this.name = 'smart-agents/hem/twin-create'
+    this.description = 'Creates a digital twin contract.'
+    this.inputs = { }
     this.outputExample = { }
-  }
-
-  accountValidator (param) {
-    if (!param.match(rxEtherAccount)) {
-      throw new Error('not a valid account address')
-    }
   }
 
   async run({ params, response }) {
     try {
-      // a signed message can be given to validate account
-      // for signing messags see https://web3js.readthedocs.io/en/1.0/web3-eth-accounts.html#sign
-      // var srcId = await api.eth.web3.eth.accounts.recover(
-      //   api.config.smartAgentHem.sign_message, params.srcSignature);
-      // if(srcId !== params.srcId) throw new Error("No verified Account.")
-
-      /*
-        do stuff
-        api.smartAgentHem.exampleFunction('some value')
-      */
-
+      response.contractId = await api.smartAgentHem.createTwin(params.name)
       response.status = 'success'
 
     } catch (ex) {
@@ -47,5 +26,5 @@ class SmartAgentHem extends Action {
 }
 
 module.exports = {
-  SmartAgentHem
+  SmartAgentHemCreate
 }

@@ -18,6 +18,7 @@ exports['default'] = {
       disabled: false,
       name: 'hem',
       ethAccount: '0xf638C091a1a45AEDfAFC921f27E8d65AeA8C18c4',
+      ensAddress: 'EX8000-6.workshop-hem.fifs.registrar.test.evan',
     }
   }
 }
