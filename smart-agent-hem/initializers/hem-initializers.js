@@ -1,5 +1,7 @@
 'use strict'
 
+const abiDecoder = require('abi-decoder')
+
 const {
   ModificationType,
   PropertyType,
@@ -70,6 +72,7 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
        */
       async initialize () {
         await super.initialize()
+        await this._listenToTransactions()
       }
 
       /**
@@ -81,6 +84,69 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
         api.log(`starting updates for twin "${config.ensAddress}"`, 'debug')
         await this._updateTwin1()
         await this._updateTwin2()
+        await this._updateTwin3()
+      }
+
+      /**
+       * substribe to updates for digital twin
+       *
+       * @return     {Promise<void>}  resolved when done
+       */
+      async _listenToTransactions() {
+        api.log('subscribing to digital twin updates', 'debug')
+        abiDecoder.addABI(JSON.parse(this.runtime.contractLoader.contracts.DataContract.interface))
+        api.eth.blockEmitter.on('data', async (block) => {
+          for (let tx of block.transactions) {
+            const input = abiDecoder.decodeMethod(tx.input)
+            if (input) {
+              // check if target list is 'usagelog'
+              if (input.params[0].value[0] ===
+                  this.runtime.nameResolver.soliditySha3('usagelog')) {
+                // retrieve all entries, starting with newest entry
+                const entries = await this.runtime.dataContract.getListEntries(
+                  tx.to,
+                  'usagelog',
+                  config.ethAccount,
+                  true,
+                  true,
+                  10,
+                  0,
+                  true,
+                )
+                // check if last two entries are a pair of 'stopped' and 'started' entries 
+                if (entries.length > 1 &&
+                  entries[0].state === 'stopped' &&
+                  entries[1].state === 'started') {
+                  api.log('received usage log, updating workinghours')
+
+                  // get current value for workinghours
+                  const workinghours = await this.runtime.dataContract.getEntry(
+                    tx.to,
+                    'workinghours',
+                    config.ethAccount,
+                    true,
+                    false,
+                  )
+
+                  // calculate last run time
+                  const diff = parseInt(entries[0].time, 10) -
+                    parseInt(entries[1].time, 10)
+
+                  // update workinghours
+                  await this.runtime.dataContract.setEntry(
+                    tx.to,
+                    'workinghours',
+                    workinghours + diff,
+                    config.ethAccount,
+                    true,
+                    false,
+                    'unencrypted',
+                  )
+                }
+              }
+            }
+          }
+        })
       }
 
       /**
@@ -237,6 +303,71 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
           )
         } else {
           api.log('version >= 2, skipping update', 'debug')
+        }
+      }
+
+      /**
+       * apply third update:
+       * - add field 'workinghours' to description
+       * - allow field 'workinghours' to be set by contract owner group
+       * - set initial value for workinghours --> 0
+       * - update version in description
+       *
+       * @return     {Promise<void>}  resolved when done
+       */
+      async _updateTwin3() {
+        const twinAddress = await this.runtime.nameResolver.getAddress(config.ensAddress)
+        const description = await this.runtime.description.getDescription(twinAddress)
+
+        const versionInfo = description.public.version.split('.')
+        const version = parseInt(versionInfo[2], 10)
+        if (version < 3) {
+          api.log('version < 3, applying update')
+
+          // add field 'workinghours' to description
+          description.public.dataSchema = {
+            'workinghours': {
+              '$id': 'workinghours_schema',
+              'type': 'number',
+            }
+          }
+          await this.runtime.description.setDescription(
+            twinAddress,
+            description,
+            config.ethAccount,
+          )
+
+          // allow field 'workinghours' to be set by contract owner group
+          await this.runtime.rightsAndRoles.setOperationPermission(
+            twinAddress,                 // contract to be updated
+            config.ethAccount,           // account, that can change permissions
+            0,                           // role id, uint8 value
+            'workinghours',              // name of the object
+            PropertyType.Entry,          // what type of element is modified
+            ModificationType.Set,        // type of the modification
+            true,                        // grant this capability
+          )
+
+          // set initial value for workinghours --> 0
+          await this.runtime.dataContract.setEntry(
+            twinAddress,
+            'workinghours',
+            0,
+            config.ethAccount,
+            true,
+            false,
+            'unencrypted',
+          )
+
+          // update version in description
+          description.public.version = '0.1.3'
+          await this.runtime.description.setDescription(
+            twinAddress,
+            description,
+            config.ethAccount,
+          )
+        } else {
+          api.log('version >= 3, skipping update', 'debug')
         }
       }
     }
