@@ -16,7 +16,27 @@ class SmartAgentHemCreate extends Action {
     try {
       response.contractId = await api.smartAgentHem.createTwin()
       response.status = 'success'
+    } catch (ex) {
+      api.log(ex)
+      response.status = 'error'
+      response.error = ex
+    }
+  }
+}
 
+class SmartAgentHemUpdate extends Action {
+  constructor() {
+    super()
+    this.name = 'smart-agents/hem/twin-update'
+    this.description = 'Updates a digital twin contract.'
+    this.inputs = { }
+    this.outputExample = { }
+  }
+
+  async run({ params, response }) {
+    try {
+      response.contractId = await api.smartAgentHem.updateTwin()
+      response.status = 'success'
     } catch (ex) {
       api.log(ex)
       response.status = 'error'
@@ -26,5 +46,6 @@ class SmartAgentHemCreate extends Action {
 }
 
 module.exports = {
-  SmartAgentHemCreate
+  SmartAgentHemCreate,
+  SmartAgentHemUpdate,
 }
