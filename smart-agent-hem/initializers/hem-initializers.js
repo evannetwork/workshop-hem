@@ -80,6 +80,7 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
       async updateTwin() {
         api.log(`starting updates for twin "${config.ensAddress}"`, 'debug')
         await this._updateTwin1()
+        await this._updateTwin2()
       }
 
       /**
@@ -155,6 +156,87 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
           )
         } else {
           api.log('version >= 1, skipping update', 'debug')
+        }
+      }
+
+      /**
+       * apply second update:
+       * - add field 'usagelog' to description
+       * - allow field 'usagelog' to be set by contract member group
+       * - invite configured iot device to contract
+       * - share encryption key for contract with configured iot device
+       * - update version in description
+       *
+       * @return     {Promise<void>}  resolved when done
+       */
+      async _updateTwin2() {
+        const twinAddress = await this.runtime.nameResolver.getAddress(config.ensAddress)
+        const description = await this.runtime.description.getDescription(twinAddress)
+
+        const versionInfo = description.public.version.split('.')
+        const version = parseInt(versionInfo[2], 10)
+        if (version < 2) {
+          api.log('version < 2, applying update')
+
+          // add field 'usagelog' to description
+          description.public.dataSchema.usagelog = {
+            '$id': 'usagelog_schema',
+            'type': 'object',
+            'additionalProperties': false,
+            'properties': {
+              'time':  { 'type': 'string' },
+              'state': { 'type': 'string' },
+            }
+          }
+          await this.runtime.description.setDescription(
+            twinAddress,
+            description,
+            config.ethAccount,
+          )
+
+          // allow field 'usagelog' to be set by contract member group
+          await this.runtime.rightsAndRoles.setOperationPermission(
+            twinAddress,                 // contract to be updated
+            config.ethAccount,           // account, that can change permissions
+            1,                           // role id, uint8 value
+            'usagelog',                  // name of the object
+            PropertyType.ListEntry,      // what type of element is modified
+            ModificationType.Set,        // type of the modification
+            true,                        // grant this capability
+          )
+
+          // invite configured iot device to contract
+          await this.runtime.dataContract.inviteToContract(
+            null,
+            twinAddress,
+            config.ethAccount,
+            config.toInvite,
+          )
+
+          // share encryption key for contract with configured iot device
+          const key = await this.runtime.sharing.getKey(
+            twinAddress,
+            config.ethAccount,
+            '*',
+          )
+          await this.runtime.sharing.addSharing(
+            twinAddress,
+            config.ethAccount,
+            config.toInvite,
+            '*',
+            0,
+            key,
+          )
+          
+          // update version in description
+          description.public.version = '0.1.2'
+          await this.runtime.description.setDescription(
+            twinAddress,
+            description,
+            config.ethAccount,
+          )
+        } else {
+          api.log('version >= 2, skipping update', 'debug')
         }
       }
     }
