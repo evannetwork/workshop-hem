@@ -1,5 +1,14 @@
 # workshop-hem
 
+## About this Workshop
+This is an example project, that shows iteratively
+- how smart contract can be created in an application
+- how they can be extended and updated
+- how access to data in it can be granted to other accounts
+- how an IoT device can be attached
+
+So let's get started and hurry to the [wiki](https://github.com/evannetwork/workshop-hem/wiki) for the workshop instructions!
+
 ## Install
 - you very likely will need `nvm` installed
 - you definitely need `lerna` and `gulp` installed
