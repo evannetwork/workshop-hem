@@ -13,8 +13,8 @@ const claimDomain = async (domain, mnemonic) => {
 
 const getRuntime = async (mnemonic) => {
   // setup dependencies
-  const web3 = new Web3();
-  web3.setProvider(new web3.providers.WebsocketProvider(runtimeConfig.web3Provider));
+  const provider = new Web3.providers.WebsocketProvider(runtimeConfig.web3Provider);
+  const web3 = new Web3(provider, null, { transactionConfirmationBlocks: 1 });
 
 
   // insert mnemonic if unknown

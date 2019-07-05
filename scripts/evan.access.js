@@ -204,8 +204,8 @@ async function init(cfg = {}) {
   cfg.keyConfig[sha3('mailboxKeyExchange')] =
     '346c22768f84f3050f5c94cec98349b3c5cbfa0b7315304e13647a4918ffff22'     // accX <--> mailbox edge key
 
-  const web3 = new Web3()
-  web3.setProvider(new web3.providers.WebsocketProvider(cfg.web3Provider))
+  const provider = new Web3.providers.WebsocketProvider(runtimeConfig.web3Provider)
+  const web3 = new Web3(provider, null, { transactionConfirmationBlocks: 1 })
   const dfs = new Ipfs({
     dfsConfig:cfg.ipfs,
     web3: web3,

@@ -7,3 +7,5 @@ ipfs-contractus
 package-lock.json.*
 package-lock.json
 docs/_build/*
+scripts/config/createdProfiles.json
+yarn.lock
