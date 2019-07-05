@@ -38,8 +38,8 @@ let dfs;
 let runtimes;
 
 gulp.task('init-profiles', async () => {
-  web3 = new Web3();
-  web3.setProvider(new web3.providers.WebsocketProvider(runtimeConfig.web3Provider));
+  const provider = new Web3.providers.WebsocketProvider(runtimeConfig.web3Provider);
+  web3 = new Web3(provider, null, { transactionConfirmationBlocks: 1 });
 
   await buildKeyConfig(web3, runtimeConfig);
   await checkBalances(web3, runtimeConfig);
