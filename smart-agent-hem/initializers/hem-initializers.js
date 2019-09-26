@@ -135,7 +135,7 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
         // add DataContract abi to decoder
         abiDecoder.addABI(JSON.parse(this.runtime.contractLoader.contracts.DataContract.interface))
         // load identity for trusted device (for claims checks)
-        const issuerIdentity = (await this.runtime.claims.getIdentityForAccount(
+        const issuerIdentity = (await this.runtime.verifications.getIdentityForAccount(
           config.trustedIssuer)).options.address
         api.eth.blockEmitter.on('data', async (block) => {
           for (let tx of block.transactions) {
@@ -164,7 +164,7 @@ module.exports = class SmartAgentHemInitializer extends Initializer {
                     api.log(`checking claims for account '${tx.from}'`, 'debug')
 
                     // get all '/calibrated' claims for tx originator
-                    const claims = await this.runtime.claims.getClaims(
+                    const claims = await this.runtime.verifications.getClaims(
                       tx.from,
                       '/calibrated',
                     )

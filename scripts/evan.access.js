@@ -20,7 +20,7 @@ const Transform = require('stream').Transform
 const IpfsApi = require('ipfs-api')
 const BCC = require('@evan.network/api-blockchain-core')
 const { Ipfs, createDefaultRuntime, PropertyType, ModificationType } = BCC
-const Web3 = require('web3')
+const Web3Utils = require('web3-utils');
 const path = require('path')
 const fs = require('fs')
 const pfy = require('util').promisify
@@ -44,7 +44,7 @@ catch(e) { if (e.code !== "MODULE_NOT_FOUND") throw e }
 try{ createdProfiles = require('./config/createdProfiles.json') }
 catch(e) { if (e.code !== "MODULE_NOT_FOUND") throw e }
 
-const sha3 = Web3.utils.soliditySha3
+const sha3 = Web3Utils.soliditySha3;
 function sha9(a, b) { return sha3.apply(sha3, [sha3(a), sha3(b)].sort()) }
 
 /*

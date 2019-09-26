@@ -9,3 +9,4 @@ package-lock.json
 docs/_build/*
 scripts/config/createdProfiles.json
 yarn.lock
+node_modules
